@@ -1,0 +1,74 @@
+{
+ "40": {
+  "name": "Azuki #40",
+  "image": "ipfs://QmYDvPAXtiJg7s8JdRBSLWdgSphQdac8j1YuQNNxcGE1hg/40.png",
+  "attributes": [
+   {
+    "trait_type": "Type",
+    "value": "Human"
+   },
+   {
+    "trait_type": "Hair",
+    "value": "Brown Long"
+   },
+   {
+    "trait_type": "Special",
+    "value": "Fireflies"
+   },
+   {
+    "trait_type": "Clothing",
+    "value": "Straw Poncho"
+   },
+   {
+    "trait_type": "Eyes",
+    "value": "Tired"
+   },
+   {
+    "trait_type": "Mouth",
+    "value": "Long Stubble"
+   },
+   {
+    "trait_type": "Offhand",
+    "value": "Lantern"
+   },
+   {
+    "trait_type": "Background",
+    "value": "Cool Gray"
+   }
+  ]
+ },
+ "49": {
+  "name": "Azuki #49",
+  "image": "ipfs://QmYDvPAXtiJg7s8JdRBSLWdgSphQdac8j1YuQNNxcGE1hg/49.png",
+  "attributes": [
+   {
+    "trait_type": "Type",
+    "value": "Human"
+   },
+   {
+    "trait_type": "Hair",
+    "value": "Maroon Disheveled"
+   },
+   {
+    "trait_type": "Clothing",
+    "value": "Hoshi Jacket"
+   },
+   {
+    "trait_type": "Eyes",
+    "value": "Careless"
+   },
+   {
+    "trait_type": "Mouth",
+    "value": "Growl"
+   },
+   {
+    "trait_type": "Offhand",
+    "value": "Shuriken"
+   },
+   {
+    "trait_type": "Background",
+    "value": "Cool Gray"
+   }
+  ]
+ }
+}
