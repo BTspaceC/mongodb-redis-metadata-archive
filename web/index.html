@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数字藏品档案系统</title>
+  <link rel="stylesheet" href="static/css/style.css?v=3">
+</head>
+<body>
+<div class="wrap">
+  <h1>Pudgy Penguins 数字藏品档案与稀有度分析</h1>
+  <p class="sub">链上公开元数据的链下归档：MongoDB 存档案并用聚合管道计算稀有度，Redis 做缓存和排行。</p>
+
+  <h2>已收录系列 <span class="src mongo">MongoDB · collections</span></h2>
+  <div class="grid-2" id="list"></div>
+
+  <div class="card">
+    <h2>数据分层与存储架构 (Storage Architecture)</h2>
+    <table>
+      <tr><th>存储</th><th>放什么</th><th>为什么</th></tr>
+      <tr><td><span class="src mongo">MongoDB</span></td><td>系列、藏品文档、特征统计</td><td>唯一的权威数据源：元数据本身是 JSON，特征维度不固定，聚合管道算稀有度</td></tr>
+      <tr><td><span class="src redis">Redis</span></td><td>详情缓存、聚合结果缓存、稀有度排行、浏览热度</td><td>只放热数据和实时计数，丢了能从 MongoDB 全部重建</td></tr>
+    </table>
+  </div>
+</div>
+
+<script src="static/js/common.js?v=4"></script>
+<script>
+renderNav("index.html");
+
+api("/api/collections").then(({ data }) => {
+  document.getElementById("list").innerHTML = data.map(c => `
+    <div class="card">
+      <h2>${esc(c.name)}</h2>
+      <div class="kv">
+        <div><b>${c.token_count.toLocaleString()}</b><span>收录件数</span></div>
+        <div><b>${c.trait_types.length}</b><span>特征维度</span></div>
+        <div><b>${esc(c.standard)}</b><span>${esc(c.chain)}</span></div>
+      </div>
+      <div class="chips">${c.trait_types.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>
+      <p class="mono">合约 ${esc(c.contract)}</p>
+      <p class="sub">导入时间：${new Date(c.imported_at).toLocaleString("zh-CN")}</p>
+      <a class="btn" href="browse.html?c=${c._id}">浏览藏品</a>
+      <a class="btn ghost" href="rank.html?c=${c._id}">稀有度排行</a>
+    </div>`).join("") || `<div class="empty">还没有数据，请先运行导入脚本</div>`;
+});
+</script>
+</body>
+</html>

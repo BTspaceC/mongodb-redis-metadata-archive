@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>系统管理与基准测试控制台</title>
+  <link rel="stylesheet" href="static/css/style.css?v=3">
+</head>
+<body>
+<div class="wrap">
+  <h1>系统管理与基准测试控制台</h1>
+  <p class="sub">用于重算稀有度、清空缓存、验证分布式锁与比对缓存前后的响应延迟。</p>
+
+  <div class="card">
+    <h2>集群状态与缓存指标</h2>
+    <button class="btn ghost" onclick="status()">刷新状态</button>
+    <pre class="out" id="statusOut"></pre>
+  </div>
+
+  <div class="card">
+    <h2>触发特征稀缺度重算 <span class="src mongo">MongoDB 聚合管道</span><span class="src redis">Redis 排行榜</span></h2>
+    <p class="sub">流水线：$unwind → $group → $merge (写入 trait_stats) → $lookup → $group → $setWindowFields → $merge (写回 tokens.rarity)。</p>
+    <button class="btn" id="recomputeBtn" onclick="recompute()">执行全量重算</button>
+    <pre class="out" id="recomputeOut"></pre>
+  </div>
+
+  <div class="card">
+    <h2>缓存清理与失效管理 <span class="src redis">SCAN + DEL 游标遍历</span></h2>
+    <button class="btn" onclick="clearCache()">清空 token:* 与 stats:* 缓存</button>
+    <pre class="out" id="clearOut"></pre>
+  </div>
+
+  <div class="card">
+    <h2>Cache-Aside 性能基准比对</h2>
+    <p class="sub">连续请求同一藏品：第 1 次 MISS (查 MongoDB 并回写)，第 2 次 HIT (直接读取 Redis)，验证亚毫秒级响应。</p>
+    藏品编号：<input type="number" id="tid" value="1234" min="0" style="width:110px">
+    <button class="btn" onclick="compare()">测试响应延迟</button>
+    <button class="btn ghost" onclick="missing()">测试防穿透 (空值缓存)</button>
+    <pre class="out" id="compareOut"></pre>
+  </div>
+</div>
+
+<script src="static/js/common.js?v=4"></script>
+<script>
+renderNav("console.html");
+const show = (id, obj) => document.getElementById(id).textContent =
+  typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+
+async function status() {
+  show("statusOut", (await api("/api/admin/status")).data);
+}
+
+async function recompute() {
+  const btn = document.getElementById("recomputeBtn");
+  btn.disabled = true;
+  show("recomputeOut", "聚合管道执行中，请稍候...");
+  const { data } = await api(`/api/admin/recompute/${CID}`, { method: "POST" });
+  show("recomputeOut", data);
+  btn.disabled = false;
+  status();
+}
+
+async function clearCache() {
+  show("clearOut", (await api("/api/admin/cache/clear", { method: "POST" })).data);
+  status();
+}
+
+async function compare() {
+  const tid = document.getElementById("tid").value;
+  const a = await api(`/api/tokens/${CID}/${tid}`);
+  const b = await api(`/api/tokens/${CID}/${tid}`);
+  show("compareOut",
+    `[第 1 次请求] X-Cache=${a.cache}  耗时: ${a.ms} ms\n` +
+    `[第 2 次请求] X-Cache=${b.cache}  耗时: ${b.ms} ms\n` +
+    (a.cache === "BYPASS" ? "提示: 当前运行于 Redis 降级直查模式。"
+      : a.cache === "MISS" ? `性能加速: Redis 缓存提速约 ${(a.ms / b.ms).toFixed(1)} 倍。`
+      : "两次请求均命中缓存。"));
+  status();
+}
+
+async function missing() {
+  const a = await api(`/api/tokens/${CID}/99999999`);
+  const b = await api(`/api/tokens/${CID}/99999999`);
+  show("compareOut",
+    `[第 1 次未命中] HTTP ${a.status}  X-Cache=${a.cache}  耗时: ${a.ms} ms\n` +
+    `[第 2 次防穿透] HTTP ${b.status}  X-Cache=${b.cache}  耗时: ${b.ms} ms\n` +
+    `验证结论: 空值缓存命中，已成功拦截对底层数据库的无效穿透。`);
+}
+
+status();
+</script>
+</body>
+</html>

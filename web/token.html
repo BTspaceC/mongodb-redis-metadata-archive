@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>藏品详情</title>
+  <link rel="stylesheet" href="static/css/style.css?v=3">
+</head>
+<body>
+<div class="wrap">
+  <div class="toolbar">
+    <a href="browse.html">← 返回浏览</a>
+    <span class="grow"></span>
+    <!-- 缓存命中状态与延迟标签 (X-Cache) -->
+    <span class="cache-badge" id="cacheBadge"></span>
+    <button class="btn ghost" onclick="load()">再请求一次</button>
+  </div>
+  <div id="content">加载中…</div>
+</div>
+
+<script src="static/js/common.js?v=4"></script>
+<script>
+renderNav("token.html");
+const TID = params.get("id");
+
+async function load() {
+  const { data: t, cache, ms, status } = await api(`/api/tokens/${CID}/${TID}`);
+
+  // 角落的徽标：HIT = 数据直接来自 Redis，MISS = 这次查了 MongoDB
+  const badge = document.getElementById("cacheBadge");
+  badge.className = "cache-badge " + cache;
+  badge.textContent = `X-Cache: ${cache} · ${ms} ms · ${CACHE_TEXT[cache] || ""}`;
+
+  if (status !== 200) {
+    document.getElementById("content").innerHTML =
+      `<div class="card empty">藏品不存在（「不存在」这个结果也会被缓存 60 秒，防止缓存穿透）</div>`;
+    return;
+  }
+  document.title = t.name;
+
+  // 特征表：每个取值标出「x% 的藏品拥有」
+  const rows = t.attributes.map(a => `
+    <tr>
+      <td>${esc(a.trait_type)}</td>
+      <td><b>${esc(a.value)}</b></td>
+      <td>${a.frequency == null ? "暂无" : `${(a.frequency * 100).toFixed(2)}% 的藏品拥有（${a.count} 件）`}</td>
+      <td><div class="bar"><i style="width:${Math.max(1, (a.frequency || 0) * 100)}%"></i></div></td>
+    </tr>`).join("");
+
+  // 转移记录时间线：新的在上面
+  const transfers = (t.transfers || []).slice().reverse();
+  const timeline = transfers.length ? `<ul class="timeline">` + transfers.map(x => `
+      <li><b>${x.time ? new Date(x.time).toLocaleDateString("zh-CN") : "时间暂无"}</b> · 区块 ${x.block ?? "暂无"}<br>
+      <span class="mono">${shortAddr(x.from)} → ${shortAddr(x.to)}</span><br>
+      <span class="mono" title="${esc(x.tx_hash)}">tx ${shortAddr(x.tx_hash)}</span></li>`).join("") + `</ul>`
+    : `<div class="empty">暂无（已为头部藏品及高频交易样本建立链上转移档案）</div>`;
+
+  document.getElementById("content").innerHTML = `
+    <div class="detail">
+      <div>
+        <!-- 大图优先用 CDN 上的高清原图；加载失败（比如断网）就退回本地缩略图 -->
+        <img class="big" src="${t.image.cached || imgUrl(t.image)}"
+             onerror="this.onerror=null;this.src='${t.image.local || PLACEHOLDER}'">
+        <div class="card" style="margin-top:14px">
+          <div class="kv">
+            <div><b class="rank-big">${t.rarity ? "#" + t.rarity.rank : "暂无"}</b><span>稀有度排名</span></div>
+            <div><b>${t.rarity ? t.rarity.score : "暂无"}</b><span>稀有度分</span></div>
+            <div><b>${t.views ?? "暂无"}</b><span>浏览次数 <span class="src redis">Redis ZSet</span></span></div>
+          </div>
+          <p class="sub">持有人：<span class="mono">${esc(t.owner || "暂无")}</span></p>
+        </div>
+      </div>
+      <div>
+        <h1>${esc(t.name)}</h1>
+        <p class="sub mono">_id: ${esc(t._id)}</p>
+        <div class="card">
+          <h2>特征 <span class="src mongo">tokens.attributes + trait_stats</span></h2>
+          <table><tr><th>维度</th><th>取值</th><th>占比</th><th></th></tr>${rows}</table>
+        </div>
+        <div class="card">
+          <h2>标签与备注 <span class="src mongo">更新 MongoDB 后删除缓存</span></h2>
+          <p><input type="text" id="tags" style="width:100%" placeholder="标签，用逗号分隔" value="${esc((t.tags || []).join(","))}"></p>
+          <p><textarea id="notes" placeholder="备注">${esc(t.notes || "")}</textarea></p>
+          <button class="btn" onclick="save()">保存</button> <span id="saved" class="sub"></span>
+        </div>
+        <div class="card">
+          <h2>转移记录（最近 ${transfers.length} 条） <span class="src mongo">tokens.transfers</span></h2>
+          ${timeline}
+        </div>
+      </div>
+    </div>`;
+}
+
+// 保存：PATCH 接口先更新 MongoDB，再删除 Redis 里这件藏品的缓存
+async function save() {
+  const tags = document.getElementById("tags").value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const notes = document.getElementById("notes").value;
+  await api(`/api/tokens/${CID}/${TID}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tags, notes }),
+  });
+  await load();   // 重新加载：缓存已被删除，这次应该显示 MISS，内容是新的
+  document.getElementById("saved").textContent = "已保存，缓存已失效";
+}
+
+load();
+</script>
+</body>
+</html>

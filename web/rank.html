@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>排行榜</title>
+  <link rel="stylesheet" href="static/css/style.css?v=3">
+</head>
+<body>
+<div class="wrap">
+  <h1>排行榜 <span class="src redis">Redis ZSet</span></h1>
+  <p class="sub">名次和分数由 ZREVRANGE 从 Redis 取出；名称和图片再用一次 $in 查询从 MongoDB 补全。</p>
+
+  <div class="rank-cols">
+    <div class="card">
+      <h2>稀有度 Top 50 <span class="src redis" id="k1"></span></h2>
+      <div id="rarity"></div>
+    </div>
+    <div class="card">
+      <h2>浏览热度 Top 20 <span class="src redis" id="k2"></span></h2>
+      <div id="views"></div>
+    </div>
+  </div>
+</div>
+
+<script src="static/js/common.js?v=4"></script>
+<script>
+renderNav("rank.html");
+document.getElementById("k1").textContent = `rank:rarity:${CID}`;
+document.getElementById("k2").textContent = `rank:views:${CID}`;
+
+function rows(list, unit) {
+  return list.map(r => `
+    <a class="rank-row" href="token.html?c=${CID}&id=${r.token_id}">
+      <span class="pos">${r.position}</span>
+      ${imgTag(r.image)}
+      <span class="name">${esc(r.name || "#" + r.token_id)}</span>
+      <span class="score">${r.score} ${unit}</span>
+    </a>`).join("");
+}
+
+api(`/api/rank/rarity/${CID}?n=50`).then(({ data, source }) => {
+  // Redis 不可用时后端会降级为直接查 MongoDB，这里把标签改过来，如实显示数据来源
+  if (source === "mongodb") {
+    const k1 = document.getElementById("k1");
+    k1.className = "src mongo";
+    k1.textContent = "Redis 不可用，已改查 MongoDB";
+  }
+  document.getElementById("rarity").innerHTML = rows(data, "分") ||
+    `<div class="empty">排行榜为空：运行 scripts/rebuild_redis.py 可以从 MongoDB 重建</div>`;
+});
+api(`/api/rank/views/${CID}?n=20`).then(({ data, source }) => {
+  document.getElementById("views").innerHTML = rows(data, "次") ||
+    `<div class="empty">${source === "unavailable" ? "Redis 不可用，浏览计数暂时无法显示"
+      : "还没有浏览记录，去详情页看几件藏品再回来"}</div>`;
+});
+</script>
+</body>
+</html>

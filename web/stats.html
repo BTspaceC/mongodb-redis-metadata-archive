@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>统计</title>
+  <link rel="stylesheet" href="static/css/style.css?v=3">
+</head>
+<body>
+<div class="wrap">
+  <h1>统计 <span class="src mongo">聚合管道</span><span class="src redis">结果缓存 1 小时</span></h1>
+  <p class="sub">每张图右上角显示这次请求是否命中缓存。聚合要扫全系列，但结果几小时内不变，所以缓存收益最大。</p>
+
+  <div class="card">
+    <h2>特征分布 <span class="cache-badge" id="b1"></span></h2>
+    <div class="tabs" id="tabs"></div>
+    <div class="chart" id="traitChart"></div>
+  </div>
+
+  <div class="card">
+    <h2>稀有度分数分布（$bucket 分段） <span class="cache-badge" id="b2"></span></h2>
+    <div class="chart" id="bucketChart"></div>
+  </div>
+
+  <div class="card">
+    <h2>系列对比（$group） <span class="cache-badge" id="b3"></span></h2>
+    <table id="compare"></table>
+  </div>
+</div>
+
+<!-- ECharts 放在本地，断网也能画图 -->
+<script src="static/js/echarts.min.js"></script>
+<script src="static/js/common.js?v=4"></script>
+<script>
+renderNav("stats.html");
+
+function badge(id, r) {
+  const el = document.getElementById(id);
+  el.className = "cache-badge " + r.cache;
+  el.textContent = `${r.cache} · ${r.ms} ms`;
+}
+
+// ---------- 特征分布柱状图：每个维度一个标签页 ----------
+const traitChart = echarts.init(document.getElementById("traitChart"));
+api(`/api/stats/${CID}/traits`).then(r => {
+  badge("b1", r);
+  const tabs = document.getElementById("tabs");
+  tabs.innerHTML = r.data.map((g, i) => `<button data-i="${i}">${esc(g.trait_type)}</button>`).join("");
+  const show = i => {
+    tabs.querySelectorAll("button").forEach((b, j) => b.classList.toggle("on", i === j));
+    const values = r.data[i].values;
+    traitChart.setOption({
+      tooltip: { trigger: "axis", formatter: p => `${p[0].name}<br>${p[0].value} 件（${(values[p[0].dataIndex].frequency * 100).toFixed(2)}%）` },
+      grid: { left: 50, right: 20, bottom: 110 },
+      xAxis: { type: "category", data: values.map(v => v.value), axisLabel: { rotate: 50, interval: 0 } },
+      yAxis: { type: "value", name: "件数" },
+      dataZoom: values.length > 40 ? [{ type: "slider", bottom: 5, end: 40 }] : [],
+      series: [{ type: "bar", data: values.map(v => v.count), itemStyle: { color: "#2f7de1", borderRadius: [4, 4, 0, 0] } }],
+    }, true);
+  };
+  tabs.querySelectorAll("button").forEach(b => b.onclick = () => show(Number(b.dataset.i)));
+  if (r.data.length) show(0);
+});
+
+// ---------- 稀有度分数直方图 ----------
+const bucketChart = echarts.init(document.getElementById("bucketChart"));
+api(`/api/stats/${CID}/rarity-buckets`).then(r => {
+  badge("b2", r);
+  bucketChart.setOption({
+    tooltip: { trigger: "axis" },
+    grid: { left: 50, right: 20, bottom: 70 },
+    xAxis: { type: "category", name: "分数区间", data: r.data.map(b => b.range), axisLabel: { rotate: 30, interval: 0 } },
+    yAxis: { type: "value", name: "件数" },
+    series: [{ type: "bar", barCategoryGap: "8%", data: r.data.map(b => b.count), itemStyle: { color: "#e0a100" } }],
+  });
+});
+
+// ---------- 系列对比表 ----------
+api("/api/stats/compare").then(r => {
+  badge("b3", r);
+  document.getElementById("compare").innerHTML =
+    `<tr><th>系列</th><th>件数</th><th>平均特征数（非 None）</th><th>平均稀有度分</th><th>最高稀有度分</th></tr>` +
+    r.data.map(c => `<tr><td>${esc(c.collection_id)}</td><td>${c.tokens}</td><td>${c.avg_trait_count}</td>
+      <td>${c.avg_score ?? "暂无"}</td><td>${c.max_score ?? "暂无"}</td></tr>`).join("");
+});
+
+window.onresize = () => { traitChart.resize(); bucketChart.resize(); };
+</script>
+</body>
+</html>

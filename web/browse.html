@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>浏览藏品</title>
+  <link rel="stylesheet" href="static/css/style.css?v=3">
+</head>
+<body>
+<div class="wrap">
+  <h1>浏览藏品 <span class="src mongo">MongoDB · tokens（特征多键索引）</span></h1>
+  <p class="sub">左侧勾选特征：同一维度多选是「或」，不同维度之间是「且」（$all + $elemMatch）。</p>
+
+  <div class="browse">
+    <div class="card filters" id="filters">加载中…</div>
+    <div>
+      <div class="toolbar">
+        <span id="total"></span>
+        <span class="grow"></span>
+        <form id="jump"><input type="number" id="jumpId" min="0" placeholder="编号" style="width:100px">
+          <button class="btn ghost">查看</button></form>
+        <select class="plain" id="sort">
+          <option value="rarity">按稀有度排名</option>
+          <option value="id">按编号</option>
+        </select>
+        <button class="btn ghost" id="reset">清空筛选</button>
+      </div>
+      <div class="tokens" id="tokens"></div>
+      <div class="pager">
+        <button class="btn ghost" id="prev">上一页</button>
+        <span id="pageInfo"></span>
+        <button class="btn ghost" id="next">下一页</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="static/js/common.js?v=4"></script>
+<script>
+renderNav("browse.html");
+
+let page = 1;
+let totalPages = 1;
+const selected = new Set();   // 里面放 "维度:取值"
+
+// 左侧筛选面板：数据来自特征分布接口（聚合结果 + Redis 缓存）
+api(`/api/stats/${CID}/traits`).then(({ data }) => {
+  document.getElementById("filters").innerHTML = `<h2>特征筛选</h2>` + data.map(group => `
+    <details>
+      <summary>${esc(group.trait_type)}（${group.values.length}）</summary>
+      ${group.values.map(v => `
+        <label><span><input type="checkbox" value="${esc(group.trait_type)}:${esc(v.value)}"> ${esc(v.value)}</span>
+        <small>${v.count}</small></label>`).join("")}
+    </details>`).join("");
+  document.querySelectorAll("#filters input").forEach(box => {
+    box.onchange = () => {
+      box.checked ? selected.add(box.value) : selected.delete(box.value);
+      page = 1;
+      load();
+    };
+  });
+});
+
+async function load() {
+  const query = new URLSearchParams({
+    collection: CID,
+    traits: [...selected].join(","),
+    sort: document.getElementById("sort").value,
+    page,
+  });
+  const { data } = await api("/api/tokens?" + query);
+  totalPages = Math.max(1, Math.ceil(data.total / data.page_size));
+  document.getElementById("total").textContent = `共 ${data.total.toLocaleString()} 件`;
+  document.getElementById("pageInfo").textContent = `第 ${page} / ${totalPages} 页`;
+  document.getElementById("tokens").innerHTML = data.items.map(t => `
+    <a class="token" href="token.html?c=${t.collection_id}&id=${t.token_id}">
+      ${imgTag(t.image)}
+      <div class="meta"><b>${esc(t.name)}</b>
+      <span>${t.rarity ? `排名 #${t.rarity.rank} · ${t.rarity.score} 分` : "暂无稀有度"}</span></div>
+    </a>`).join("") || `<div class="empty">没有符合条件的藏品</div>`;
+}
+
+document.getElementById("sort").onchange = () => { page = 1; load(); };
+document.getElementById("prev").onclick = () => { if (page > 1) { page--; load(); } };
+document.getElementById("next").onclick = () => { if (page < totalPages) { page++; load(); } };
+document.getElementById("reset").onclick = () => {
+  selected.clear();
+  document.querySelectorAll("#filters input").forEach(box => box.checked = false);
+  page = 1;
+  load();
+};
+document.getElementById("jump").onsubmit = e => {
+  e.preventDefault();
+  const id = document.getElementById("jumpId").value;
+  if (id !== "") location.href = `token.html?c=${CID}&id=${id}`;
+};
+
+load();
+</script>
+</body>
+</html>
